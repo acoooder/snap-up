@@ -20,9 +20,9 @@
         "typings"
     ],
     "include": [
-        "./src", "index.ts", "task.ts"
+        "./src"
     ],
     "files": [
-        "index.ts"
+        "./src/index.ts"
     ]
   }
