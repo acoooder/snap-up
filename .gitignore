@@ -1,5 +1,4 @@
 .history
-.gitignore
 build
 cache
 node_modules
