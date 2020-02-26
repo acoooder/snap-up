@@ -1,0 +1,28 @@
+{
+    "compilerOptions": {
+        "noEmitOnError": true,
+        "removeComments": false,
+        "sourceMap": true,
+        "strict": true,
+        "moduleResolution": "node",
+        "module": "commonjs",
+        "target": "es2015",
+        "experimentalDecorators": true,
+        "noUnusedLocals": true,
+        "lib": ["dom", "scripthost", "es2015"],
+        "rootDir": "./src",
+        "outDir": "./build"
+    },
+    "exclude": [
+        ".history",
+        ".vscode",
+        "dist",
+        "typings"
+    ],
+    "include": [
+        "./src", "index.ts", "task.ts"
+    ],
+    "files": [
+        "index.ts"
+    ]
+  }
