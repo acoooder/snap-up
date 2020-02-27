@@ -83,9 +83,4 @@ function scheduleCronstyle(page: puppeteer.Page) {
   await page.goto('https://www.jd.com/');
   await login(page);
   scheduleCronstyle(page);
-  await page.waitForSelector('.checkout-submit');
-  await page.evaluate(() => {
-    const btn = document.querySelector('.checkout-submit') as HTMLButtonElement;
-    btn.click();
-  });
 })();
