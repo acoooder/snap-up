@@ -13,19 +13,11 @@ async function login(page: puppeteer.Page): Promise<boolean> {
   });
 }
 
-async function reload(page: puppeteer.Page, url: string): Promise<void> {
+async function getUrl(page: puppeteer.Page, url: string): Promise<string> {
   await page.goto(url, {
     waitUntil: 'domcontentloaded'
   });
-  // await page.waitFor(5000);
-  // const sec = await page.evaluate(() => {
-  //   const text = document.querySelector('.J-time')?.textContent!;
-  //   return parseInt(text.slice(text.indexOf('分') + 1));
-  // });
-  // // 减去各种损耗和误差
-  // await page.waitFor(sec * 1000 - 1000);
-  // eslint-disable-next-line no-async-promise-executor
-  return new Promise(async (resolve) => {
+  return new Promise((resolve) => {
     const listener = async (response: puppeteer.Response) => {
       // 获取商品预约抢购信息的接口
       if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
@@ -38,58 +30,79 @@ async function reload(page: puppeteer.Page, url: string): Promise<void> {
           const min =  Math.floor((time - hour * 3600) / 60);
           return time - hour * 3600 - min * 60; 
         };
-        console.log(getSec());
-        
-        await page.waitFor(getSec() * 1000);
-        await page.reload({
-          waitUntil: 'domcontentloaded'
-        });
-        resolve();
+        console.log(data);
+        await page.waitFor(getSec() * 1000 + 500);
+        resolve('https://' + data.url);
       }
     };
     page.on('response', listener);
   });
 }
 
-async function clickReservation(page: puppeteer.Page): Promise<void> {
-  await page.waitForSelector('#btn-reservation');
-  return await page.evaluate(() => {
-    setTimeout(() => {
-      const btn = document.querySelector('#btn-reservation') as HTMLAnchorElement;
-      btn.click();
-    });
-  });
+// async function clickReservation(page: puppeteer.Page, url: string): Promise<void> {
+//   await page.waitForSelector('#btn-reservation');
+//   const text = await page.evaluate(() => {
+//     const btn = document.querySelector('#btn-reservation') as HTMLAnchorElement;
+//     btn.click();
+//     return btn.innerHTML;
+//   });
+ 
+  
+//   // return await page.evaluate(() => {
+//   //   setTimeout(() => {
+//   //     const btn = document.querySelector('#btn-reservation') as HTMLAnchorElement;
+//   //     btn.click();
+//   //   });
+//   // });
+// }
+
+// async function checkInfo(page: puppeteer.Page): Promise<void> {
+//   return new Promise((resolve) => {
+//     const listener = async (response: puppeteer.Response) => {
+//       // 获取商品预约抢购信息的接口
+//       if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
+//         page.off('response', listener);
+//         const text = await response.text();
+//         const data = JSON.parse(text.slice(10, text.length - 2));
+//         const time = data.d;
+//         const getSec = () => {
+//           const hour = Math.floor(time / 3600);
+//           const min =  Math.floor((time - hour * 3600) / 60);
+//           return time - hour * 3600 - min * 60; 
+//         };
+//         // eslint-disable-next-line no-console
+//         console.log(data);
+//         console.log(getSec());
+//         await clickReservation(page);
+//         resolve(data.info);
+//       }
+//     };
+//     page.on('response', listener);
+//   });
+// }
+
+async function newPage(browser: puppeteer.Browser) {
+  const page = await browser.newPage();
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36');
+
+  return page;
 }
 
-async function checkInfo(page: puppeteer.Page): Promise<void> {
-  return new Promise((resolve) => {
-    const listener = async (response: puppeteer.Response) => {
-      // 获取商品预约抢购信息的接口
-      if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
-        page.off('response', listener);
-        const text = await response.text();
-        const data = JSON.parse(text.slice(10, text.length - 2));
-        // eslint-disable-next-line no-console
-        console.log(data.d);
-        await clickReservation(page);
-        resolve(data.info);
-      }
-    };
-    page.on('response', listener);
-  });
-}
-
-function scheduleCronstyle(page: puppeteer.Page) {
+function scheduleCronstyle(browser: puppeteer.Browser) {
   for (const key in task) {
     const item = task[key as keyof typeof task];
     schedule.scheduleJob(item.预约时间, async () => {
-      await checkInfo(page);
+      const page = await newPage(browser);
+      const targetUrl = await getUrl(page, item.url);
+      await page.goto(targetUrl);
     });
     schedule.scheduleJob(item.抢购时间, async () => {
-      await reload(page, item.url);
-      await checkInfo(page);
-
+      const page = await newPage(browser);
+      const targetUrl = await getUrl(page, item.url);
       try {
+        await page.goto(targetUrl, {
+          waitUntil: 'domcontentloaded'
+        });
         await page.waitForSelector('.checkout-submit');
         await page.evaluate(() => {
           const btn = document.querySelector('.checkout-submit') as HTMLButtonElement;
@@ -117,5 +130,5 @@ function scheduleCronstyle(page: puppeteer.Page) {
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36');
   await page.goto('https://www.jd.com/');
   await login(page);
-  scheduleCronstyle(page);
+  scheduleCronstyle(browser);
 })();
