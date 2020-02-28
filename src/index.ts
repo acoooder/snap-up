@@ -13,7 +13,7 @@ async function login(page: puppeteer.Page): Promise<boolean> {
   });
 }
 
-async function getUrl(page: puppeteer.Page, url: string): Promise<string> {
+async function getUrl(page: puppeteer.Page, url: string, type: '预约' | '抢购'): Promise<string> {
   await page.goto(url, {
     waitUntil: 'domcontentloaded'
   });
@@ -32,13 +32,19 @@ async function getUrl(page: puppeteer.Page, url: string): Promise<string> {
         };
         console.log(data);
         await page.waitFor(getSec() * 1000 + 500);
-        resolve('https://' + data.url);
+        if (type === '预约') {
+          resolve('https://' + data.url);
+        } else {
+          const sku = data.sku;
+          const rid = Date.now().toString().slice(0, 10);
+          resolve(`https://marathon.jd.com/seckill/seckill.action?skuId=${sku}&num=1&rid=${rid}`);
+        }
+        
       }
     };
     page.on('response', listener);
   });
 }
-
 // async function clickReservation(page: puppeteer.Page, url: string): Promise<void> {
 //   await page.waitForSelector('#btn-reservation');
 //   const text = await page.evaluate(() => {
@@ -93,15 +99,26 @@ function scheduleCronstyle(browser: puppeteer.Browser) {
     const item = task[key as keyof typeof task];
     schedule.scheduleJob(item.预约时间, async () => {
       const page = await newPage(browser);
-      const targetUrl = await getUrl(page, item.url);
+      const targetUrl = await getUrl(page, item.url, '预约');
       await page.goto(targetUrl);
     });
     schedule.scheduleJob(item.抢购时间, async () => {
       const page = await newPage(browser);
-      const targetUrl = await getUrl(page, item.url);
+      const targetUrl = await getUrl(page, item.url, '抢购');
+      console.log('targetUrl', targetUrl);
+      
       try {
         await page.goto(targetUrl, {
           waitUntil: 'domcontentloaded'
+        });
+        // 如果抢购失败页面，则尝试触发再次抢购按钮
+        page.on('load', () => { 
+          if (page.url() === 'https://marathon.jd.com/koFail.html') {
+            page.evaluate(() => {
+              // @ts-ignore
+              tryAgain();
+            });
+          }
         });
         await page.waitForSelector('.checkout-submit');
         await page.evaluate(() => {
