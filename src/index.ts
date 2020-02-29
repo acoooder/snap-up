@@ -2,14 +2,75 @@ import * as puppeteer from 'puppeteer';
 import * as schedule from 'node-schedule';
 import task from './task';
 
-async function login(page: puppeteer.Page): Promise<boolean> {
-  return await page.evaluate(() => {
-    if (!!document.querySelector('#ttbar-login')?.querySelector('.nickname') === true) {
-      return true;
-    } else {
-      alert('请先手动登录');
-      return false;
-    }
+function parseJsonp(data: string) {
+  const start = data.indexOf('(') + 1;
+  const end = data.lastIndexOf(')');
+  return JSON.parse(data.slice(start, end));
+}
+
+async function isLogin(page: puppeteer.Page): Promise<void> {
+  return new Promise((resolve) => {
+    const getNick = (data: string) => {
+      const start = data.indexOf('"nick":"') + 8;
+      const end = data.indexOf('","info"');
+      return data.slice(start, end);
+    };
+    const listener = async (response: puppeteer.Response) => {
+      if (response.url().indexOf('https://passport.jd.com/new/helloService.ashx') >= 0) {
+        page.off('response', listener);
+        const text = await response.text();
+        if (!getNick(text)) {
+          // eslint-disable-next-line no-console
+          console.log('当前状态未登录，请及时登录');
+          await page.evaluate(() => {
+            alert('当前状态未登录，请及时登录');
+          });
+        }
+        resolve();
+      }
+    };
+    page.on('response', listener);
+  });
+}
+
+function getSec(time: number) {
+  const hour = Math.floor(time / 3600);
+  const min =  Math.floor((time - hour * 3600) / 60);
+  return time - hour * 3600 - min * 60; 
+}
+
+async function getReservationInfo(page: puppeteer.Page): Promise<{ d: number; url: string }> {
+  return new Promise((resolve) => {
+    const listener = async (response: puppeteer.Response) => {
+      if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
+        page.off('response', listener);
+        const text = await response.text();
+        console.log(parseJsonp(text));
+        resolve(parseJsonp(text));
+      }
+    };
+    page.on('response', listener);
+  });
+}
+
+async function getSnapUpUrl(page: puppeteer.Page): Promise<string> {
+  const reservationInfo = await getReservationInfo(page);
+  const time = getSec(reservationInfo.d);
+  await page.waitFor(time * 1000 - 200);
+  await page.reload({
+    waitUntil: 'domcontentloaded'
+  });
+  return new Promise((resolve) => {
+    const listener = async (response: puppeteer.Response) => {
+      if (response.url().indexOf('https://itemko.jd.com/itemShowBtn') >= 0) {
+        page.off('response', listener);
+        const text = await response.text();
+        const data = parseJsonp(text);
+        console.log(data);
+        resolve('https://' + data.url);
+      }
+    };
+    page.on('response', listener);
   });
 }
 
@@ -17,34 +78,17 @@ async function getUrl(page: puppeteer.Page, url: string, type: '预约' | '抢�
   await page.goto(url, {
     waitUntil: 'domcontentloaded'
   });
-  return new Promise((resolve) => {
-    const listener = async (response: puppeteer.Response) => {
-      // 获取商品预约抢购信息的接口
-      if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
-        page.off('response', listener);
-        const text = await response.text();
-        const data = JSON.parse(text.slice(10, text.length - 2));
-        const time = data.d;
-        const getSec = () => {
-          const hour = Math.floor(time / 3600);
-          const min =  Math.floor((time - hour * 3600) / 60);
-          return time - hour * 3600 - min * 60; 
-        };
-        console.log(data);
-        await page.waitFor(getSec() * 1000 + 500);
-        if (type === '预约') {
-          resolve('https://' + data.url);
-        } else {
-          const sku = data.sku;
-          const rid = Date.now().toString().slice(0, 10);
-          resolve(`https://marathon.jd.com/seckill/seckill.action?skuId=${sku}&num=1&rid=${rid}`);
-        }
-        
-      }
-    };
-    page.on('response', listener);
-  });
+  await isLogin(page);
+  if (type === '预约') {
+    const data = await getReservationInfo(page);
+    const time = getSec(data.d);
+    await page.waitFor(time * 1000 + 500);
+    return 'https://' + data.url;
+  } else {
+    return await getSnapUpUrl(page);
+  }
 }
+
 // async function clickReservation(page: puppeteer.Page, url: string): Promise<void> {
 //   await page.waitForSelector('#btn-reservation');
 //   const text = await page.evaluate(() => {
@@ -60,31 +104,6 @@ async function getUrl(page: puppeteer.Page, url: string, type: '预约' | '抢�
 //   //     btn.click();
 //   //   });
 //   // });
-// }
-
-// async function checkInfo(page: puppeteer.Page): Promise<void> {
-//   return new Promise((resolve) => {
-//     const listener = async (response: puppeteer.Response) => {
-//       // 获取商品预约抢购信息的接口
-//       if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
-//         page.off('response', listener);
-//         const text = await response.text();
-//         const data = JSON.parse(text.slice(10, text.length - 2));
-//         const time = data.d;
-//         const getSec = () => {
-//           const hour = Math.floor(time / 3600);
-//           const min =  Math.floor((time - hour * 3600) / 60);
-//           return time - hour * 3600 - min * 60; 
-//         };
-//         // eslint-disable-next-line no-console
-//         console.log(data);
-//         console.log(getSec());
-//         await clickReservation(page);
-//         resolve(data.info);
-//       }
-//     };
-//     page.on('response', listener);
-//   });
 // }
 
 async function newPage(browser: puppeteer.Browser) {
@@ -105,8 +124,7 @@ function scheduleCronstyle(browser: puppeteer.Browser) {
     schedule.scheduleJob(item.抢购时间, async () => {
       const page = await newPage(browser);
       const targetUrl = await getUrl(page, item.url, '抢购');
-      console.log('targetUrl', targetUrl);
-      
+
       try {
         await page.goto(targetUrl, {
           waitUntil: 'domcontentloaded'
@@ -123,7 +141,8 @@ function scheduleCronstyle(browser: puppeteer.Browser) {
         await page.waitForSelector('.checkout-submit');
         await page.evaluate(() => {
           const btn = document.querySelector('.checkout-submit') as HTMLButtonElement;
-          btn.click();
+          // btn.click();
+          alert('抢到了' + btn.textContent);
         });
       } catch (err) {
         console.error('抢购失败');
@@ -141,11 +160,10 @@ function scheduleCronstyle(browser: puppeteer.Browser) {
       height: 1080
     }
   });
-
+  scheduleCronstyle(browser);
   // 获取第一个标签页
   const page = (await browser.pages())[0];
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36');
   await page.goto('https://www.jd.com/');
-  await login(page);
-  scheduleCronstyle(browser);
+  await isLogin(page);
 })();
