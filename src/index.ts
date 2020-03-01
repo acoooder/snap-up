@@ -45,7 +45,7 @@ async function getReservationInfo(page: puppeteer.Page): Promise<{ d: number; ur
       if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
         page.off('response', listener);
         const text = await response.text();
-        console.log(parseJsonp(text));
+        // console.log(parseJsonp(text));
         resolve(parseJsonp(text));
       }
     };
@@ -66,8 +66,7 @@ async function getSnapUpUrl(page: puppeteer.Page): Promise<string> {
         page.off('response', listener);
         const text = await response.text();
         const data = parseJsonp(text);
-        console.log(data);
-        resolve('https://' + data.url);
+        resolve('https:' + data.url);
       }
     };
     page.on('response', listener);
@@ -83,7 +82,7 @@ async function getUrl(page: puppeteer.Page, url: string, type: '预约' | '抢�
     const data = await getReservationInfo(page);
     const time = getSec(data.d);
     await page.waitFor(time * 1000 + 500);
-    return 'https://' + data.url;
+    return 'https:' + data.url;
   } else {
     return await getSnapUpUrl(page);
   }
@@ -124,7 +123,8 @@ function scheduleCronstyle(browser: puppeteer.Browser) {
     schedule.scheduleJob(item.抢购时间, async () => {
       const page = await newPage(browser);
       const targetUrl = await getUrl(page, item.url, '抢购');
-
+      console.log('targetUrl', targetUrl);
+      
       try {
         await page.goto(targetUrl, {
           waitUntil: 'domcontentloaded'
@@ -141,8 +141,7 @@ function scheduleCronstyle(browser: puppeteer.Browser) {
         await page.waitForSelector('.checkout-submit');
         await page.evaluate(() => {
           const btn = document.querySelector('.checkout-submit') as HTMLButtonElement;
-          // btn.click();
-          alert('抢到了' + btn.textContent);
+          btn.click();
         });
       } catch (err) {
         console.error('抢购失败');
