@@ -2,3 +2,5 @@
 build
 cache
 node_modules
+account.txt
+log.txt
