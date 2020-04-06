@@ -31,14 +31,13 @@ function parseJsonp(data: string) {
 }
 
 // 打开页面后等待预约或抢购的时间
-function getWaitTime(fireDate: Date, diffTime: number) {
-  // 60 - 5;
-  // 5为定时任务设置时间的秒数，因为抢购和预约是整点，所以要补上时间
+function getWaitTime(fireDate: Date) {
+  // 55:60 - 5; 5为定时任务设置时间的秒数，因为抢购和预约是整点，所以要补上时间
   const addTime = 55 * 1000;
   const startTime = fireDate.getTime();
   const endTime = Date.now();
   const scheduleTime = startTime + addTime;
-  return scheduleTime - endTime + diffTime;
+  return scheduleTime - endTime;
 }
 
 async function isLogin(page: puppeteer.Page): Promise<void> {
@@ -72,7 +71,6 @@ async function getReservationInfo(page: puppeteer.Page): Promise<{ d: number; ur
       if (response.url().indexOf('https://yushou.jd.com/youshouinfo.action') >= 0) {
         page.off('response', listener);
         const text = await response.text();
-        // console.log(parseJsonp(text));
         resolve(parseJsonp(text));
       }
     };
@@ -120,27 +118,6 @@ async function getSnapUpUrl(page: puppeteer.Page): Promise<string> {
   });
 }
 
-// async function getUrl(page: puppeteer.Page, url: string, type: '预约' | '抢购'): Promise<string> {
-//   await page.goto(url, {
-//     waitUntil: 'domcontentloaded'
-//   });
-//   if (type === '预约') {
-//     const data = await getReservationInfo(page);
-//     return 'https:' + data.url;
-//   } else {
-//     return await getSnapUpUrl(page);
-//   }
-// }
-
-// async function clickReservation(page: puppeteer.Page): Promise<string> {
-//   await page.waitForSelector('#btn-reservation');
-//   const url = await page.evaluate(() => {
-//     const btn = document.querySelector('#btn-reservation') as HTMLAnchorElement;
-//     btn.click();
-//     return btn.href;
-//   });
-//   return url;
-// }
 
 async function newPage(browser: puppeteer.Browser) {
   const page = await browser.newPage();
@@ -149,7 +126,7 @@ async function newPage(browser: puppeteer.Browser) {
   return page;
 }
 
-function scheduleCronstyle(browser: puppeteer.Browser, diffTime: number) {
+function scheduleCronstyle(browser: puppeteer.Browser) {
   for (const key in task) {
     const item = task[key as keyof typeof task];
     schedule.scheduleJob(item.预约时间, async (fireDate) => {
@@ -158,7 +135,7 @@ function scheduleCronstyle(browser: puppeteer.Browser, diffTime: number) {
         waitUntil: 'domcontentloaded'
       });
       const data = await getReservationInfo(page);
-      const waitTime = getWaitTime(fireDate, diffTime);
+      const waitTime = getWaitTime(fireDate);
       console.log(key + '  waitTime', (waitTime) / 1000);
       console.log(key + '  预约链接', data.url);
       isLogin(page);
@@ -176,7 +153,7 @@ function scheduleCronstyle(browser: puppeteer.Browser, diffTime: number) {
       await page.goto(item.url, {
         waitUntil: 'domcontentloaded'
       });
-      const waitTime = getWaitTime(fireDate, 0);
+      const waitTime = getWaitTime(fireDate);
       
       await page.waitFor(waitTime - 500);
       page.evaluate((skuId) => {
@@ -309,7 +286,6 @@ function scheduleCronstyle(browser: puppeteer.Browser, diffTime: number) {
           }, item.skuId, requestData, targetUrl);
         }
       });
-      // const targetUrl = `https://marathon.jd.com/seckill/seckill.action?skuId=${item.skuId}&num=1&rid=${Date.now().toString().slice(0, 10)}`;
       await page.goto(targetUrl, {
         waitUntil: 'domcontentloaded'
       });
@@ -331,5 +307,5 @@ function scheduleCronstyle(browser: puppeteer.Browser, diffTime: number) {
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36');
   await page.goto('https://home.jd.com');
 
-  scheduleCronstyle(browser, 0);
+  scheduleCronstyle(browser);
 })();
